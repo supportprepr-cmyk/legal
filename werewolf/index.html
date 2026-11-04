@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>今日の人狼｜栞</title>
+<meta name="description" content="3人の発言から人狼を当てる、1日1回の推理クイズ。登録なし、無料。">
+<meta property="og:title" content="今日の人狼｜栞">
+<meta property="og:description" content="3人の発言から人狼を当てる、1日1回の推理クイズ。">
+<style>
+:root{--bg:#07070C;--card:#12121A;--line:#2A2A3A;--text:#F5F3FF;--sub:#C4C4CE;--muted:#9CA3AF;--accent:#A78BFA;--accent-strong:#4C1D95;--ok:#34D399;--ng:#F87171}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:520px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:0 0 4px}
+.lead{color:var(--muted);font-size:13px;margin:0 0 18px}
+.progress{display:flex;gap:6px;margin:0 0 14px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--line)}
+.dot.now{background:var(--accent)}.dot.ok{background:var(--ok)}.dot.ng{background:var(--ng)}
+.scene{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:14px;line-height:1.7;margin:0 0 14px}
+.person{display:block;width:100%;text-align:left;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px;font:inherit;cursor:pointer}
+.person:hover:not(:disabled){border-color:var(--accent)}
+.person:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.person:disabled{cursor:default}
+.person b{display:block;font-size:13px;color:#E9D5FF;margin-bottom:4px}
+.person span{display:block;font-size:14px;line-height:1.6;color:var(--sub)}
+.person.wolf{border-color:var(--ok)}.person.miss{border-color:var(--ng)}
+.ask{font-size:13px;color:var(--muted);margin:0 0 10px}
+.verdict{font-size:15px;font-weight:700;margin:14px 0 4px}
+.verdict.ok{color:var(--ok)}.verdict.ng{color:var(--ng)}
+.why{font-size:14px;line-height:1.7;color:var(--sub);margin:0 0 14px}
+.btn{display:block;width:100%;text-align:center;text-decoration:none;min-height:46px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:700;cursor:pointer;margin:0 0 10px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1E1035}
+.score{font-size:32px;font-weight:800;margin:6px 0 2px}
+.dots{font-size:22px;letter-spacing:4px;margin:0 0 14px}
+.note{color:var(--muted);font-size:12px;line-height:1.6;margin:14px 0 0}
+.error{color:var(--sub);font-size:14px;line-height:1.7}
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="lead">読み込み中…</p></main>
+<script>
+(function () {
+  var STORE_URL = 'https://apps.apple.com/jp/app/id6811600924';
+  var WEB_URL = 'https://supportprepr-cmyk.github.io/legal/app/';
+  var app = document.getElementById('app');
+  var puzzle, answers = [], isLatest = false;
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+  function japanDate(time) { return new Date(time + 9 * 3600 * 1000).toISOString().slice(0, 10); }
+  function shortDate(date) { var p = date.split('-'); return Number(p[1]) + '/' + Number(p[2]); }
+  function key() { return 'werewolf-daily:' + puzzle.date; }
+  function load() { try { var saved = JSON.parse(localStorage.getItem(key()) || '[]'); return Array.isArray(saved) ? saved : []; } catch (e) { return []; } }
+  function save() { try { localStorage.setItem(key(), JSON.stringify(answers)); } catch (e) {} }
+  function getJson(url) { return fetch(url, { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); }); }
+  function correct() { return answers.filter(function (a, i) { return a === puzzle.rounds[i].wolf; }).length; }
+  function marks() { return answers.map(function (a, i) { return a === puzzle.rounds[i].wolf ? '●' : '○'; }).join(''); }
+
+  function header() {
+    var box = el('div');
+    box.appendChild(el('h1', '', '今日の人狼'));
+    box.appendChild(el('p', 'lead', (isLatest ? '最新の問題（' : '') + shortDate(puzzle.date) + (isLatest ? '）' : '') + '・3問。嘘をついている人狼を当ててください。'));
+    var progress = el('div', 'progress');
+    puzzle.rounds.forEach(function (r, i) {
+      var state = i < answers.length ? (answers[i] === r.wolf ? ' ok' : ' ng') : i === answers.length ? ' now' : '';
+      progress.appendChild(el('span', 'dot' + state));
+    });
+    box.appendChild(progress);
+    return box;
+  }
+
+  function renderRound(index, chosen) {
+    var round = puzzle.rounds[index];
+    app.textContent = '';
+    app.appendChild(header());
+    app.appendChild(el('p', 'scene', round.scene));
+    if (chosen == null) app.appendChild(el('p', 'ask', '人狼だと思う人を押してください。'));
+    round.people.forEach(function (person, i) {
+      var button = el('button', 'person' + (chosen != null && i === round.wolf ? ' wolf' : '') + (chosen === i && i !== round.wolf ? ' miss' : ''));
+      button.type = 'button';
+      button.disabled = chosen != null;
+      button.appendChild(el('b', '', person.name));
+      button.appendChild(el('span', '', '「' + person.says + '」'));
+      button.addEventListener('click', function () {
+        answers.push(i);
+        save();
+        renderRound(index, i);
+      });
+      app.appendChild(button);
+    });
+    if (chosen != null) {
+      var hit = chosen === round.wolf;
+      app.appendChild(el('p', 'verdict ' + (hit ? 'ok' : 'ng'), hit ? '正解' : '不正解。人狼は' + round.people[round.wolf].name));
+      app.appendChild(el('p', 'why', round.why));
+      var next = el('button', 'btn primary', index + 1 < puzzle.rounds.length ? '次の問題へ' : '結果を見る');
+      next.type = 'button';
+      next.addEventListener('click', function () { index + 1 < puzzle.rounds.length ? renderRound(index + 1) : renderResult(); });
+      app.appendChild(next);
+    }
+    window.scrollTo(0, 0);
+  }
+
+  function shareText() {
+    return '栞 今日の人狼 ' + shortDate(puzzle.date) + '\n' + marks() + ' ' + correct() + '/' + puzzle.rounds.length + '\n' + location.origin + location.pathname;
+  }
+
+  function renderResult() {
+    app.textContent = '';
+    app.appendChild(el('h1', '', '今日の人狼'));
+    app.appendChild(el('p', 'score', correct() + ' / ' + puzzle.rounds.length));
+    app.appendChild(el('p', 'dots', marks()));
+    var share = el('button', 'btn primary', '結果を共有する');
+    share.type = 'button';
+    share.addEventListener('click', function () {
+      if (navigator.share) { navigator.share({ text: shareText() }).catch(function () {}); return; }
+      navigator.clipboard.writeText(shareText()).then(function () { share.textContent = 'コピーしました'; }).catch(function () { window.prompt('この文をコピーしてください', shareText()); });
+    });
+    app.appendChild(share);
+    var x = el('a', 'btn', 'X に投稿する');
+    x.href = 'https://x.com/intent/post?text=' + encodeURIComponent(shareText());
+    x.target = '_blank';
+    x.rel = 'noopener';
+    app.appendChild(x);
+    var play = el('a', 'btn', '8人の人狼を本気で遊ぶ（アプリ）');
+    play.href = STORE_URL;
+    app.appendChild(play);
+    var web = el('a', 'btn', 'キャラとAIチャットする（ブラウザ）');
+    web.href = WEB_URL;
+    app.appendChild(web);
+    app.appendChild(el('p', 'note', '問題は毎日変わります。アプリとブラウザ版のAIチャットは18歳以上の方向けです。'));
+  }
+
+  function start() {
+    answers = load().slice(0, puzzle.rounds.length);
+    if (answers.length >= puzzle.rounds.length) renderResult();
+    else renderRound(answers.length);
+  }
+
+  var today = japanDate(Date.now());
+  getJson('puzzles/' + today + '.json').catch(function () {
+    return getJson('puzzles/index.json').then(function (list) {
+      var past = list.dates.filter(function (d) { return d <= today; }).sort();
+      if (!past.length) throw new Error('none');
+      isLatest = true;
+      return getJson('puzzles/' + past[past.length - 1] + '.json');
+    });
+  }).then(function (found) { puzzle = found; start(); }).catch(function () {
+    app.textContent = '';
+    app.appendChild(el('h1', '', '今日の人狼'));
+    app.appendChild(el('p', 'error', '問題を読み込めませんでした。通信を確かめて、開き直してください。'));
+  });
+})();
+</script>
+</body>
+</html>
